@@ -191,23 +191,27 @@ def sign_flip(reps, n):
 
 def attn_divergence(attn):
     """
-    Attention divergence per token per layer.
+    Attention divergence per token per layer, computed on the symmetrized
+    attention matrix to remove causal-mask structural bias.
 
-    attn : (L, S, S) — mean-head attention, attn[l, i, j] = how much
-                        token i attends to token j at layer l.
+    attn    : (L, S, S) — mean-head attention, attn[l, i, j] = how much
+                          token i attends to token j at layer l.
 
-    div[l, i] = col_sum[i] - row_sum[i]
-              = (how much others attend to i) - (how much i attends to others)
+    A_sym   = (A + A.T) / 2  — removes the lower-triangular bias; only
+                                relative sink/source structure remains.
 
-    Positive → token is a sink (information flows in)
-    Negative → token is a source (information flows out)
+    div[l, i] = col_sum_sym[i] - row_sum_sym[i]
+
+    Positive → token is a relative sink (pulls more than it pushes)
+    Negative → token is a relative source (pushes more than it pulls)
 
     Returns: (L, S)
     """
-    col_sum = attn.sum(dim=1)   # (L, S) — total attention received by each token
-    row_sum = attn.sum(dim=2)   # (L, S) — total attention sent by each token
-    return (col_sum - row_sum).numpy()  # (L, S)
-
+    # symmetrize: average each off-diagonal pair
+    a_sym   = (attn + attn.transpose(1, 2)) / 2.0   # (L, S, S)
+    col_sum = a_sym.sum(dim=1)                        # (L, S)
+    row_sum = a_sym.sum(dim=2)                        # (L, S)
+    return (col_sum - row_sum).numpy()                # (L, S)
 
 # ── Encoding analysis ─────────────────────────────────────────────────────────
 def run_encoding(mdl, tok, pair, n_layers):
